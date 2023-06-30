@@ -4,12 +4,12 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#include "core/profile.h"
 #include "flight/control.h"
 #include "flight/filter.h"
 #include "io/led.h"
-#include "profile.h"
 #include "project.h"
-#include "rx.h"
+#include "rx/rx.h"
 #include "util/util.h"
 
 // multiplier for pids at 3V - for PID_VOLTAGE_COMPENSATION - default 1.33f from H101 code

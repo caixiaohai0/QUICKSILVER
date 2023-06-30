@@ -3,9 +3,9 @@
 #include <math.h>
 #include <stdint.h>
 
-#include "drv_time.h"
+#include "driver/time.h"
 #include "flight/control.h"
-#include "osd_render.h"
+#include "osd/render.h"
 #include "project.h"
 
 #define STICKMAX 0.7f

@@ -4,19 +4,19 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "debug.h"
-#include "drv_serial.h"
-#include "drv_serial_4way.h"
-#include "drv_spi_max7456.h"
-#include "drv_usb.h"
-#include "flash.h"
+#include "core/debug.h"
+#include "core/flash.h"
+#include "core/profile.h"
+#include "driver/serial.h"
+#include "driver/serial_4way.h"
+#include "driver/spi_max7456.h"
+#include "driver/usb.h"
 #include "flight/control.h"
 #include "flight/sixaxis.h"
 #include "io/data_flash.h"
 #include "io/usb_configurator.h"
 #include "io/vtx.h"
-#include "osd/osd_render.h"
-#include "profile.h"
+#include "osd/render.h"
 #include "util/cbor_helper.h"
 
 #define ENCODE_BUFFER_SIZE 2048

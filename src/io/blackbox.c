@@ -1,6 +1,6 @@
 #include "io/blackbox.h"
 
-#include "drv_time.h"
+#include "driver/time.h"
 #include "flight/control.h"
 #include "io/data_flash.h"
 #include "io/usb_configurator.h"
@@ -72,11 +72,11 @@ uint8_t blackbox_update() {
 
   // flash is either idle or writing, do blackbox
 
-  if ((!flags.arm_switch || !rx_aux_on(AUX_BLACKBOX)) && blackbox_enabled == 1) {
+  if ((!flags.arm_state || !rx_aux_on(AUX_BLACKBOX)) && blackbox_enabled == 1) {
     data_flash_finish();
     blackbox_enabled = 0;
     return 0;
-  } else if ((flags.arm_switch && flags.turtle_ready == 0 && rx_aux_on(AUX_BLACKBOX)) && blackbox_enabled == 0) {
+  } else if ((flags.arm_state && flags.turtle_ready == 0 && rx_aux_on(AUX_BLACKBOX)) && blackbox_enabled == 0) {
     if (data_flash_restart(blackbox_rate, state.looptime_autodetect)) {
       blackbox_enabled = 1;
     }
@@ -120,4 +120,6 @@ uint8_t blackbox_update() {
   // tell the rest of the code that flash is occuping the spi bus
   return flash_result == DATA_FLASH_WRITE;
 }
+#else
+void blackbox_set_debug(uint8_t index, int16_t data) {}
 #endif

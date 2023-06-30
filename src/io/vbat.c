@@ -1,9 +1,9 @@
 #include "io/vbat.h"
 
-#include "drv_adc.h"
-#include "flash.h"
+#include "core/flash.h"
+#include "core/profile.h"
+#include "driver/adc.h"
 #include "flight/control.h"
-#include "profile.h"
 
 // compensation factor for li-ion internal model
 // zero to bypass

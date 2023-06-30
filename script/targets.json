@@ -386,6 +386,17 @@
     ]
   },
   {
+    "name": "mambaf405us_i2c",
+    "configurations": [
+      {
+        "name": "brushless",
+        "defines": {
+          "BRUSHLESS_TARGET": ""
+        }
+      }
+    ]
+  },
+  {
     "name": "tmotorf7",
     "configurations": [
       {
@@ -497,6 +508,17 @@
   },
   {
     "name": "foxeerf745_aio",
+    "configurations": [
+      {
+        "name": "brushless",
+        "defines": {
+          "BRUSHLESS_TARGET": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "foxeerf722_v2",
     "configurations": [
       {
         "name": "brushless",
@@ -706,6 +728,83 @@
   },
   {
     "name": "flywoof411_v2",
+    "configurations": [
+      {
+        "name": "brushless",
+        "defines": {
+          "BRUSHLESS_TARGET": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "speedybeef405v3",
+    "configurations": [
+      {
+        "name": "brushless",
+        "defines": {
+          "BRUSHLESS_TARGET": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "iflight_f411_pro",
+    "configurations": [
+      {
+        "name": "brushless",
+        "defines": {
+          "BRUSHLESS_TARGET": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "zeezwhoop",
+    "configurations": [
+      {
+        "name": "brushless",
+        "defines": {
+          "BRUSHLESS_TARGET": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "tmotorf411",
+    "configurations": [
+      {
+        "name": "brushless",
+        "defines": {
+          "BRUSHLESS_TARGET": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "tmotorf411_elrs",
+    "configurations": [
+      {
+        "name": "brushless",
+        "defines": {
+          "BRUSHLESS_TARGET": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "flywoof411_5in1_aio",
+    "configurations": [
+      {
+        "name": "brushless",
+        "defines": {
+          "BRUSHLESS_TARGET": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "cross_f4",
     "configurations": [
       {
         "name": "brushless",

@@ -3,7 +3,7 @@
 #include <math.h>
 #include <string.h>
 
-#include "drv_time.h"
+#include "driver/time.h"
 #include "project.h"
 
 float mapf(float x, float in_min, float in_max, float out_min, float out_max) {
@@ -155,11 +155,6 @@ int8_t buf_equal(const uint8_t *str1, size_t len1, const uint8_t *str2, size_t l
 
 int8_t buf_equal_string(const uint8_t *str1, size_t len1, const char *str2) {
   return buf_equal(str1, len1, (const uint8_t *)str2, strlen(str2));
-}
-
-void reset_looptime() {
-  extern uint32_t lastlooptime;
-  lastlooptime = time_micros();
 }
 
 uint32_t get_chip_uid() {

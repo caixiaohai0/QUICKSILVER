@@ -69,6 +69,11 @@ typedef struct {
   uint16_t values[VTX_POWER_LEVEL_MAX];
 } vtx_power_table_t;
 
+#define VTX_POWER_TABLE_MEMBERS                     \
+  MEMBER(levels, uint8)                             \
+  TSTR_ARRAY_MEMBER(labels, VTX_POWER_LEVEL_MAX, 3) \
+  ARRAY_MEMBER(values, VTX_POWER_LEVEL_MAX, uint16)
+
 typedef struct {
   uint16_t magic;
 
@@ -84,6 +89,16 @@ typedef struct {
   vtx_power_table_t power_table;
 } vtx_settings_t;
 
+#define VTX_SETTINGS_MEMBERS \
+  MEMBER(magic, uint16)      \
+  MEMBER(protocol, uint8)    \
+  MEMBER(detected, uint8)    \
+  MEMBER(band, uint8)        \
+  MEMBER(channel, uint8)     \
+  MEMBER(pit_mode, uint8)    \
+  MEMBER(power_level, uint8) \
+  MEMBER(power_table, vtx_power_table_t)
+
 extern vtx_settings_t vtx_settings;
 
 void vtx_init();
@@ -93,6 +108,7 @@ void vtx_set(vtx_settings_t *vtx);
 
 uint16_t vtx_frequency_from_channel(vtx_band_t band, vtx_channel_t channel);
 int8_t vtx_find_frequency_index(uint16_t frequency);
+vtx_power_level_t vtx_power_level_index(vtx_power_table_t *power_table, uint16_t power);
 
 cbor_result_t cbor_encode_vtx_settings_t(cbor_value_t *enc, const vtx_settings_t *vtx);
 cbor_result_t cbor_decode_vtx_settings_t(cbor_value_t *dec, vtx_settings_t *vtx);

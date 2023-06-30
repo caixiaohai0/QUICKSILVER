@@ -1,9 +1,9 @@
 #include "motor.h"
 
-#include "drv_motor.h"
+#include "core/profile.h"
+#include "driver/motor.h"
 #include "flight/control.h"
 #include "io/usb_configurator.h"
-#include "profile.h"
 #include "project.h"
 #include "util/util.h"
 
@@ -236,14 +236,6 @@ void motor_mixer_calc(float mix[4]) {
 #endif
 
   for (int i = 0; i <= 3; i++) {
-#ifdef MOTOR_FILTER2_ALPHA
-    mix[i] = motorlpf(mix[i], i);
-#endif
-
-#ifdef MOTOR_KAL
-    mix[i] = motor_kalman(mix[i], i);
-#endif
-
     if (profile.motor.torque_boost > 0.0f) {
       mix[i] = motord(mix[i], i);
     }

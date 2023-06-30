@@ -3,8 +3,8 @@
 #include <math.h>
 #include <string.h>
 
+#include "core/profile.h"
 #include "flight/control.h"
-#include "profile.h"
 #include "util/util.h"
 
 #define BF_SETPOINT_RATE_LIMIT 1998.0f

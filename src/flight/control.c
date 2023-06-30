@@ -4,9 +4,10 @@
 #include <stdint.h>
 
 #include "angle_pid.h"
-#include "drv_fmc.h"
-#include "drv_motor.h"
-#include "drv_time.h"
+#include "core/profile.h"
+#include "driver/fmc.h"
+#include "driver/motor.h"
+#include "driver/time.h"
 #include "flight/filter.h"
 #include "flight/gestures.h"
 #include "flight/imu.h"
@@ -17,7 +18,6 @@
 #include "io/usb_configurator.h"
 #include "io/vbat.h"
 #include "motor.h"
-#include "profile.h"
 #include "turtle_mode.h"
 #include "util/cbor_helper.h"
 #include "util/util.h"
@@ -459,13 +459,14 @@ void control() {
     motor_output_calc(state.motor_mix.axis);
   }
 
-  motor_update();
-
 #ifdef MOTOR_BEEPS
   if ((flags.usb_active == 0 && flags.rx_ready && flags.failsafe && (time_millis() - state.failsafe_time_ms) > MOTOR_BEEPS_TIMEOUT) ||
       (flags.on_ground && rx_aux_on(AUX_BUZZER_ENABLE))) {
     motor_beep();
-  }
+  } else
 #endif
+  {
+    motor_update();
+  }
 }
 // end of control function

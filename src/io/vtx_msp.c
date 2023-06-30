@@ -1,9 +1,11 @@
 #include "vtx.h"
 
-#include "drv_serial.h"
-#include "drv_serial_vtx_msp.h"
+#include <string.h>
+
+#include "core/profile.h"
+#include "driver/serial.h"
+#include "driver/serial_vtx_msp.h"
 #include "io/msp.h"
-#include "profile.h"
 
 #define MSP_VTX_DETECT_TRIES 5
 
@@ -99,6 +101,9 @@ vtx_detect_status_t vtx_msp_update(vtx_settings_t *actual) {
       if (vtx_settings.magic != VTX_SETTINGS_MAGIC) {
         vtx_set(actual);
       }
+
+      // always update power-table
+      memcpy(&vtx_settings.power_table, &msp_vtx_settings.power_table, sizeof(vtx_power_table_t));
 
       vtx_settings.detected = VTX_PROTOCOL_MSP_VTX;
       vtx_connect_tries = 0;

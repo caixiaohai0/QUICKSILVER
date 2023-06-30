@@ -1,18 +1,19 @@
 #include "io/vtx.h"
 
 #include <stddef.h>
+#include <string.h>
 
-#include "debug.h"
-#include "drv_gpio.h"
-#include "drv_serial.h"
-#include "drv_serial_vtx_msp.h"
-#include "drv_serial_vtx_sa.h"
-#include "drv_serial_vtx_tramp.h"
-#include "drv_time.h"
+#include "core/debug.h"
+#include "core/profile.h"
+#include "driver/gpio.h"
+#include "driver/serial.h"
+#include "driver/serial_vtx_msp.h"
+#include "driver/serial_vtx_sa.h"
+#include "driver/serial_vtx_tramp.h"
+#include "driver/time.h"
 #include "flight/control.h"
-#include "profile.h"
 #include "project.h"
-#include "rx.h"
+#include "rx/rx.h"
 #include "util/cbor_helper.h"
 #include "util/util.h"
 
@@ -20,7 +21,11 @@
 static int fpv_init = 0;
 #endif
 
-vtx_settings_t vtx_settings;
+vtx_settings_t vtx_settings = {
+    .power_table = {
+        .levels = 0,
+    },
+};
 uint8_t vtx_connect_tries = 0;
 
 static vtx_settings_t vtx_actual;
@@ -75,6 +80,15 @@ int8_t vtx_find_frequency_index(uint16_t frequency) {
   return -1;
 }
 
+vtx_power_level_t vtx_power_level_index(vtx_power_table_t *power_table, uint16_t power) {
+  for (uint8_t level = 0; level < VTX_POWER_LEVEL_MAX; level++) {
+    if (power >= power_table->values[level] && power <= power_table->values[level]) {
+      return level;
+    }
+  }
+  return VTX_POWER_LEVEL_1;
+}
+
 static vtx_detect_status_t vtx_update_protocol(vtx_protocol_t proto, vtx_settings_t *actual) {
   switch (proto) {
   case VTX_PROTOCOL_TRAMP:
@@ -103,6 +117,181 @@ void vtx_init() {
 
   vtx_actual.pit_mode = VTX_PIT_MODE_MAX;
   vtx_actual.power_level = VTX_POWER_LEVEL_MAX;
+}
+
+static bool vtx_detect_protocol() {
+  static vtx_protocol_t protocol_to_check = VTX_PROTOCOL_MSP_VTX;
+  static uint8_t protocol_is_init = 0;
+
+  if (vtx_settings.detected) {
+    return true;
+  }
+
+  if (serial_hdzero_port != USART_PORT_INVALID) {
+    vtx_settings.protocol = VTX_PROTOCOL_MSP_VTX;
+  }
+
+  if (vtx_settings.protocol != VTX_PROTOCOL_INVALID) {
+    protocol_to_check = vtx_settings.protocol;
+  }
+
+  if (!protocol_is_init) {
+    switch (protocol_to_check) {
+    case VTX_PROTOCOL_TRAMP:
+      serial_tramp_init();
+      break;
+
+    case VTX_PROTOCOL_SMART_AUDIO:
+      serial_smart_audio_init();
+      break;
+
+    case VTX_PROTOCOL_MSP_VTX:
+      serial_msp_vtx_init();
+      break;
+
+    case VTX_PROTOCOL_INVALID:
+    case VTX_PROTOCOL_MAX:
+      break;
+    }
+    protocol_is_init = 1;
+    return false;
+  }
+
+  const vtx_detect_status_t status = vtx_update_protocol(protocol_to_check, &vtx_actual);
+
+  if (status == VTX_DETECT_SUCCESS) {
+    // detect success, save detected proto
+    vtx_settings.protocol = protocol_to_check;
+  } else if (status == VTX_DETECT_ERROR) {
+    vtx_connect_tries = 0;
+    protocol_is_init = 0;
+    vtx_delay_ms = 500;
+
+    if (vtx_settings.protocol == VTX_PROTOCOL_INVALID) {
+      // only switch protocol if we are not fixed to one
+      protocol_to_check++;
+
+      if (protocol_to_check == VTX_PROTOCOL_MAX) {
+        protocol_to_check = VTX_PROTOCOL_INVALID;
+      }
+    }
+  }
+
+  return false;
+}
+
+static bool vtx_update_frequency() {
+  static uint8_t frequency_tries = 0;
+  if (frequency_table[vtx_actual.band][vtx_actual.channel] == frequency_table[vtx_settings.band][vtx_settings.channel]) {
+    frequency_tries = 0;
+    return true;
+  }
+
+  if (frequency_tries >= VTX_APPLY_TRIES) {
+    // give up
+    vtx_settings.band = vtx_actual.band;
+    vtx_settings.channel = vtx_actual.channel;
+    frequency_tries = 0;
+    return true;
+  }
+
+  switch (vtx_settings.detected) {
+  case VTX_PROTOCOL_TRAMP:
+    tramp_set_frequency(vtx_settings.band, vtx_settings.channel);
+    break;
+
+  case VTX_PROTOCOL_SMART_AUDIO:
+    smart_audio_set_frequency(vtx_settings.band, vtx_settings.channel);
+    break;
+
+  case VTX_PROTOCOL_MSP_VTX:
+    msp_vtx_set_frequency(vtx_settings.band, vtx_settings.channel);
+    break;
+
+  case VTX_PROTOCOL_INVALID:
+  case VTX_PROTOCOL_MAX:
+    break;
+  }
+
+  frequency_tries++;
+  vtx_delay_ms = 10;
+  return false;
+}
+
+static bool vtx_update_powerlevel() {
+  static uint8_t power_level_tries = 0;
+  if (vtx_actual.power_level == vtx_settings.power_level) {
+    power_level_tries = 0;
+    return true;
+  }
+
+  if (power_level_tries >= VTX_APPLY_TRIES) {
+    // give up
+    vtx_settings.power_level = vtx_actual.power_level;
+    power_level_tries = 0;
+    return true;
+  }
+
+  switch (vtx_settings.detected) {
+  case VTX_PROTOCOL_TRAMP:
+    tramp_set_power_level(vtx_settings.power_level);
+    break;
+
+  case VTX_PROTOCOL_SMART_AUDIO:
+    smart_audio_set_power_level(vtx_settings.power_level);
+    break;
+
+  case VTX_PROTOCOL_MSP_VTX:
+    msp_vtx_set_power_level(vtx_settings.power_level);
+    break;
+
+  case VTX_PROTOCOL_INVALID:
+  case VTX_PROTOCOL_MAX:
+    break;
+  }
+
+  power_level_tries++;
+  vtx_delay_ms = 10;
+
+  return false;
+}
+
+static bool vtx_update_pitmode() {
+  static uint8_t pit_mode_tries = 0;
+  if (vtx_actual.pit_mode == vtx_settings.pit_mode) {
+    pit_mode_tries = 0;
+    return true;
+  }
+
+  if (pit_mode_tries >= VTX_APPLY_TRIES) {
+    // give up
+    vtx_settings.pit_mode = vtx_actual.pit_mode;
+    pit_mode_tries = 0;
+    return true;
+  }
+
+  switch (vtx_settings.detected) {
+  case VTX_PROTOCOL_TRAMP:
+    tramp_set_pit_mode(vtx_settings.pit_mode);
+    break;
+
+  case VTX_PROTOCOL_SMART_AUDIO:
+    smart_audio_set_pit_mode(vtx_settings.pit_mode);
+    break;
+
+  case VTX_PROTOCOL_MSP_VTX:
+    msp_vtx_set_pit_mode(vtx_settings.pit_mode);
+    break;
+
+  case VTX_PROTOCOL_INVALID:
+  case VTX_PROTOCOL_MAX:
+    break;
+  }
+
+  pit_mode_tries++;
+  vtx_delay_ms = 10;
+
+  return false;
 }
 
 void vtx_update() {
@@ -146,136 +335,14 @@ void vtx_update() {
   vtx_delay_ms = 0;
   vtx_delay_start = time_millis();
 
-  if (!vtx_settings.detected) {
-    static vtx_protocol_t protocol_to_check = VTX_PROTOCOL_MSP_VTX;
-    static uint8_t protocol_is_init = 0;
-
-    if (serial_hdzero_port != USART_PORT_INVALID) {
-      vtx_settings.protocol = VTX_PROTOCOL_MSP_VTX;
-    }
-
-    if (vtx_settings.protocol != VTX_PROTOCOL_INVALID) {
-      protocol_to_check = vtx_settings.protocol;
-    }
-
-    if (!protocol_is_init) {
-      switch (protocol_to_check) {
-      case VTX_PROTOCOL_TRAMP:
-        serial_tramp_init();
-        break;
-
-      case VTX_PROTOCOL_SMART_AUDIO:
-        serial_smart_audio_init();
-        break;
-
-      case VTX_PROTOCOL_MSP_VTX:
-        serial_msp_vtx_init();
-        break;
-
-      case VTX_PROTOCOL_INVALID:
-      case VTX_PROTOCOL_MAX:
-        break;
-      }
-      protocol_is_init = 1;
-      return;
-    }
-
-    const vtx_detect_status_t status = vtx_update_protocol(protocol_to_check, &vtx_actual);
-
-    if (status == VTX_DETECT_SUCCESS) {
-      // detect success, save detected proto
-      vtx_settings.protocol = protocol_to_check;
-    } else if (status == VTX_DETECT_ERROR) {
-      vtx_connect_tries = 0;
-      protocol_is_init = 0;
-      vtx_delay_ms = 500;
-
-      if (vtx_settings.protocol == VTX_PROTOCOL_INVALID) {
-        // only switch protocol if we are not fixed to one
-        protocol_to_check++;
-
-        if (protocol_to_check == VTX_PROTOCOL_MAX) {
-          protocol_to_check = VTX_PROTOCOL_INVALID;
-        }
-      }
-    }
+  if (!vtx_detect_protocol()) {
     return;
   }
 
   const vtx_detect_status_t status = vtx_update_protocol(vtx_settings.detected, &vtx_actual);
-
   if (status < VTX_DETECT_SUCCESS) {
     // we are in wait or error state, do nothing
     return;
-  }
-
-  static uint8_t frequency_tries = 0;
-  if (frequency_table[vtx_actual.band][vtx_actual.channel] != frequency_table[vtx_settings.band][vtx_settings.channel]) {
-    if (frequency_tries >= VTX_APPLY_TRIES) {
-      // give up
-      vtx_settings.band = vtx_actual.band;
-      vtx_settings.channel = vtx_actual.channel;
-      frequency_tries = 0;
-      return;
-    }
-
-    switch (vtx_settings.detected) {
-    case VTX_PROTOCOL_TRAMP:
-      tramp_set_frequency(vtx_settings.band, vtx_settings.channel);
-      break;
-
-    case VTX_PROTOCOL_SMART_AUDIO:
-      smart_audio_set_frequency(vtx_settings.band, vtx_settings.channel);
-      break;
-
-    case VTX_PROTOCOL_MSP_VTX:
-      msp_vtx_set_frequency(vtx_settings.band, vtx_settings.channel);
-      break;
-
-    case VTX_PROTOCOL_INVALID:
-    case VTX_PROTOCOL_MAX:
-      break;
-    }
-
-    frequency_tries++;
-    vtx_delay_ms = 10;
-    return;
-  } else {
-    frequency_tries = 0;
-  }
-
-  static uint8_t power_level_tries = 0;
-  if (vtx_actual.power_level != vtx_settings.power_level) {
-    if (power_level_tries >= VTX_APPLY_TRIES) {
-      // give up
-      vtx_settings.power_level = vtx_actual.power_level;
-      power_level_tries = 0;
-      return;
-    }
-
-    switch (vtx_settings.detected) {
-    case VTX_PROTOCOL_TRAMP:
-      tramp_set_power_level(vtx_settings.power_level);
-      break;
-
-    case VTX_PROTOCOL_SMART_AUDIO:
-      smart_audio_set_power_level(vtx_settings.power_level);
-      break;
-
-    case VTX_PROTOCOL_MSP_VTX:
-      msp_vtx_set_power_level(vtx_settings.power_level);
-      break;
-
-    case VTX_PROTOCOL_INVALID:
-    case VTX_PROTOCOL_MAX:
-      break;
-    }
-
-    power_level_tries++;
-    vtx_delay_ms = 10;
-    return;
-  } else {
-    power_level_tries = 0;
   }
 
   if (!flags.usb_active &&
@@ -289,37 +356,16 @@ void vtx_update() {
     }
   }
 
-  static uint8_t pit_mode_tries = 0;
-  if (vtx_actual.pit_mode != vtx_settings.pit_mode) {
-    if (pit_mode_tries >= VTX_APPLY_TRIES) {
-      // give up
-      vtx_settings.pit_mode = vtx_actual.pit_mode;
-      pit_mode_tries = 0;
-      return;
-    }
+  if (!vtx_update_frequency()) {
+    return;
+  }
 
-    switch (vtx_settings.detected) {
-    case VTX_PROTOCOL_TRAMP:
-      tramp_set_pit_mode(vtx_settings.pit_mode);
-      break;
+  if (!vtx_update_powerlevel()) {
+    return;
+  }
 
-    case VTX_PROTOCOL_SMART_AUDIO:
-      smart_audio_set_pit_mode(vtx_settings.pit_mode);
-      break;
-
-    case VTX_PROTOCOL_MSP_VTX:
-      msp_vtx_set_pit_mode(vtx_settings.pit_mode);
-      break;
-
-    case VTX_PROTOCOL_INVALID:
-    case VTX_PROTOCOL_MAX:
-      break;
-    }
-
-    pit_mode_tries++;
-    vtx_delay_ms = 10;
-  } else {
-    pit_mode_tries = 0;
+  if (!vtx_update_pitmode()) {
+    return;
   }
 }
 
@@ -328,15 +374,18 @@ void vtx_set(vtx_settings_t *vtx) {
     // if the selected protocol was changed, restart detection
     vtx_settings.detected = VTX_PROTOCOL_INVALID;
     vtx_settings.protocol = vtx->protocol;
+    vtx_settings.magic = 0xFFFF;
+    vtx_settings.power_table.levels = 0;
 
     smart_audio_settings.version = 0;
     smart_audio_detected = 0;
     tramp_settings.freq_min = 0;
     tramp_detected = 0;
     msp_vtx_detected = 0;
+  } else {
+    vtx_settings.magic = VTX_SETTINGS_MAGIC;
+    memcpy(&vtx_settings.power_table, &vtx->power_table, sizeof(vtx_power_table_t));
   }
-
-  vtx_settings.magic = VTX_SETTINGS_MAGIC;
 
   if (vtx_settings.pit_mode != VTX_PIT_MODE_NO_SUPPORT)
     vtx_settings.pit_mode = vtx->pit_mode;
@@ -347,78 +396,34 @@ void vtx_set(vtx_settings_t *vtx) {
   vtx_settings.channel = vtx->channel < VTX_CHANNEL_MAX ? vtx->channel : 0;
 }
 
-cbor_result_t cbor_encode_vtx_settings_t(cbor_value_t *enc, const vtx_settings_t *vtx) {
-  cbor_result_t res = CBOR_OK;
+#define MEMBER CBOR_ENCODE_MEMBER
+#define ARRAY_MEMBER CBOR_ENCODE_ARRAY_MEMBER
+#define TSTR_ARRAY_MEMBER CBOR_ENCODE_TSTR_ARRAY_MEMBER
 
-  CBOR_CHECK_ERROR(res = cbor_encode_map_indefinite(enc));
+CBOR_START_STRUCT_ENCODER(vtx_power_table_t)
+VTX_POWER_TABLE_MEMBERS
+CBOR_END_STRUCT_ENCODER()
 
-  CBOR_CHECK_ERROR(res = cbor_encode_str(enc, "magic"));
-  CBOR_CHECK_ERROR(res = cbor_encode_uint16(enc, &vtx->magic));
+CBOR_START_STRUCT_ENCODER(vtx_settings_t)
+VTX_SETTINGS_MEMBERS
+CBOR_END_STRUCT_ENCODER()
 
-  CBOR_CHECK_ERROR(res = cbor_encode_str(enc, "protocol"));
-  CBOR_CHECK_ERROR(res = cbor_encode_uint8(enc, &vtx->protocol));
+#undef MEMBER
+#undef ARRAY_MEMBER
+#undef TSTR_ARRAY_MEMBER
 
-  CBOR_CHECK_ERROR(res = cbor_encode_str(enc, "detected"));
-  CBOR_CHECK_ERROR(res = cbor_encode_uint8(enc, &vtx->detected));
+#define MEMBER CBOR_DECODE_MEMBER
+#define ARRAY_MEMBER CBOR_DECODE_ARRAY_MEMBER
+#define TSTR_ARRAY_MEMBER CBOR_DECODE_TSTR_ARRAY_MEMBER
 
-  CBOR_CHECK_ERROR(res = cbor_encode_str(enc, "band"));
-  CBOR_CHECK_ERROR(res = cbor_encode_uint8(enc, &vtx->band));
+CBOR_START_STRUCT_DECODER(vtx_power_table_t)
+VTX_POWER_TABLE_MEMBERS
+CBOR_END_STRUCT_DECODER()
 
-  CBOR_CHECK_ERROR(res = cbor_encode_str(enc, "channel"));
-  CBOR_CHECK_ERROR(res = cbor_encode_uint8(enc, &vtx->channel));
+CBOR_START_STRUCT_DECODER(vtx_settings_t)
+VTX_SETTINGS_MEMBERS
+CBOR_END_STRUCT_DECODER()
 
-  CBOR_CHECK_ERROR(res = cbor_encode_str(enc, "pit_mode"));
-  CBOR_CHECK_ERROR(res = cbor_encode_uint8(enc, &vtx->pit_mode));
-
-  CBOR_CHECK_ERROR(res = cbor_encode_str(enc, "power_level"));
-  CBOR_CHECK_ERROR(res = cbor_encode_uint8(enc, &vtx->power_level));
-
-  CBOR_CHECK_ERROR(res = cbor_encode_end_indefinite(enc));
-  return res;
-}
-
-cbor_result_t cbor_decode_vtx_settings_t(cbor_value_t *dec, vtx_settings_t *vtx) {
-  cbor_result_t res = CBOR_OK;
-
-  cbor_container_t map;
-  CBOR_CHECK_ERROR(res = cbor_decode_map(dec, &map));
-
-  const uint8_t *name;
-  uint32_t name_len;
-  for (uint32_t i = 0; i < cbor_decode_map_size(dec, &map); i++) {
-    CBOR_CHECK_ERROR(res = cbor_decode_tstr(dec, &name, &name_len));
-
-    if (buf_equal_string(name, name_len, "magic")) {
-      CBOR_CHECK_ERROR(res = cbor_decode_uint16(dec, &vtx->magic));
-      continue;
-    }
-
-    if (buf_equal_string(name, name_len, "protocol")) {
-      CBOR_CHECK_ERROR(res = cbor_decode_uint8(dec, &vtx->protocol));
-      continue;
-    }
-
-    if (buf_equal_string(name, name_len, "band")) {
-      CBOR_CHECK_ERROR(res = cbor_decode_uint8(dec, &vtx->band));
-      continue;
-    }
-
-    if (buf_equal_string(name, name_len, "channel")) {
-      CBOR_CHECK_ERROR(res = cbor_decode_uint8(dec, &vtx->channel));
-      continue;
-    }
-
-    if (buf_equal_string(name, name_len, "pit_mode")) {
-      CBOR_CHECK_ERROR(res = cbor_decode_uint8(dec, &vtx->pit_mode));
-      continue;
-    }
-
-    if (buf_equal_string(name, name_len, "power_level")) {
-      CBOR_CHECK_ERROR(res = cbor_decode_uint8(dec, &vtx->power_level));
-      continue;
-    }
-
-    CBOR_CHECK_ERROR(res = cbor_decode_skip(dec));
-  }
-  return res;
-}
+#undef MEMBER
+#undef ARRAY_MEMBER
+#undef STR_ARRAY_MEMBER
